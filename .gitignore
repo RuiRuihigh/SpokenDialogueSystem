@@ -1,0 +1,23 @@
+# Local configuration
+.env
+
+# Runtime data
+data/spokendialoguesum/*
+!data/spokendialoguesum/.gitkeep
+storage/uploads/*
+!storage/uploads/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# IDE and OS files
+.DS_Store
+.idea/
+.vscode/
