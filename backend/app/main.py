@@ -99,6 +99,7 @@ async def root() -> JSONResponse:
 
 
 @app.get("/health", tags=["system"])
+@app.get("/api/health", tags=["system"])
 async def health_check() -> JSONResponse:
     async def check_database() -> str:
         try:

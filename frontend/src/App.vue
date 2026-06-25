@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { api, fetchAudio } from './config/api'
+import { api, apiWithStatus, fetchAudio } from './config/api'
 import emotionResultsImage from './assets/landing/emotion-results.png'
 import factualResultsImage from './assets/landing/factual-results.png'
 import humanEvalImage from './assets/landing/human-eval.png'
@@ -44,10 +44,18 @@ const speechSource = ref('dataset')
 const speechSearch = ref('')
 const speechResources = ref([])
 const selectedSpeechResource = ref(null)
+const adminUsers = ref([])
+const adminUserTotal = ref(0)
+const adminUserPage = ref(1)
+const adminPageSize = 20
+const adminStats = ref(null)
+const adminHealth = ref(null)
 let browseSearchTimer = null
 let speechSearchTimer = null
 
-const heading = computed(() => ({ browse: 'Default Audio Dataset', favorites: 'My Favorites', uploads: 'My Uploads', upload: 'Upload Private Audio', speechllm: 'SpeechLLM Workspace' }[tab.value]))
+const isAdmin = computed(() => user.value?.role === 'admin')
+const heading = computed(() => ({ browse: 'Default Audio Dataset', favorites: 'My Favorites', uploads: 'My Uploads', upload: 'Upload Private Audio', speechllm: 'SpeechLLM Workspace', admin: 'Admin Console' }[tab.value]))
+const headingEyebrow = computed(() => ({ browse: 'AUDIO LIBRARY', favorites: 'SAVED AUDIO', uploads: 'PRIVATE AUDIO', upload: 'PRIVATE STORAGE', speechllm: 'SPEECH MODEL', admin: 'ADMINISTRATION' }[tab.value]))
 
 function setNotice(message) {
   notice.value = message
@@ -336,6 +344,55 @@ async function loadSpeechResources() {
   }
 }
 
+async function openAdmin() {
+  if (!isAdmin.value) return setNotice('Administrator access is required.')
+  tab.value = 'admin'
+  selected.value = null
+  clearPlayer()
+  await loadAdminDashboard()
+}
+
+async function loadAdminDashboard(page = 1) {
+  if (!isAdmin.value) return
+  busy.value = true
+  adminUserPage.value = page
+  try {
+    const [health, stats, users] = await Promise.all([
+      apiWithStatus('/api/health'),
+      api('/api/admin/datasets/spokendialoguesum/stats', { token: token.value }),
+      api(`/api/admin/users?page=${page}&pageSize=${adminPageSize}`, { token: token.value }),
+    ])
+    adminHealth.value = health.data || { status: health.ok ? 'ok' : 'degraded', dependencies: {} }
+    if (!health.ok) adminHealth.value.status = adminHealth.value.status || 'degraded'
+    adminStats.value = stats
+    adminUsers.value = users.list
+    adminUserTotal.value = users.total
+  } catch (error) {
+    setNotice(error.message)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function setUserStatus(row, isActive) {
+  if (!isAdmin.value || row.id === user.value?.id) return
+  busy.value = true
+  try {
+    const updated = await api(`/api/admin/users/${row.id}/status`, {
+      token: token.value,
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: isActive }),
+    })
+    adminUsers.value = adminUsers.value.map(item => (item.id === updated.id ? updated : item))
+    setNotice(`${updated.username} is now ${updated.isActive ? 'active' : 'disabled'}.`)
+  } catch (error) {
+    setNotice(error.message)
+  } finally {
+    busy.value = false
+  }
+}
+
 function selectSpeechSource(source) {
   speechSource.value = source
   selectedSpeechResource.value = null
@@ -552,12 +609,13 @@ onBeforeUnmount(() => {
         <button :class="{ active: tab === 'uploads' }" @click="loadUploads()">My uploads</button>
         <button :class="{ active: tab === 'upload' }" @click="openUpload">Upload audio</button>
         <button :class="{ active: tab === 'speechllm' }" @click="openSpeechLLM">SpeechLLM</button>
+        <button v-if="isAdmin" :class="{ active: tab === 'admin' }" @click="openAdmin">Admin</button>
       </nav>
       <div class="account"><strong>{{ user?.username }}</strong><small>{{ user?.role === 'admin' ? 'Administrator' : 'Signed-in user' }}</small><button class="text-button" @click="logout">Sign out</button></div>
     </aside>
 
     <section ref="workspaceElement" class="workspace" @scroll="handleBrowseScroll">
-      <header><div><p class="eyebrow">AUDIO LIBRARY</p><h1>{{ heading }}</h1></div><span v-if="busy" class="loading">Working…</span></header>
+      <header><div><p class="eyebrow">{{ headingEyebrow }}</p><h1>{{ heading }}</h1></div><span v-if="busy" class="loading">Working…</span></header>
       <p v-if="notice" class="notice">{{ notice }}</p>
 
       <template v-if="tab === 'browse'">
@@ -674,6 +732,102 @@ onBeforeUnmount(() => {
                   <button class="primary" :disabled="busy || !selectedSpeechResource" @click="runSpeechModel">{{ speechTask && speechTask.status === 'processing' ? 'Running…' : 'Run' }}</button>
                 </div>
               </div>
+            </section>
+          </div>
+        </section>
+      </template>
+
+      <template v-else-if="tab === 'admin'">
+        <section class="admin-console">
+          <div class="admin-hero">
+            <div>
+              <p class="eyebrow">SYSTEM CONTROL</p>
+              <h2>Manage users and monitor platform health.</h2>
+              <p>Admin accounts can inspect dependency status, review dataset import coverage, and disable or restore user accounts without touching private audio files.</p>
+            </div>
+            <button class="secondary" :disabled="busy" @click="loadAdminDashboard(adminUserPage)">Refresh</button>
+          </div>
+
+          <div class="admin-metrics">
+            <article class="admin-card">
+              <span>Application</span>
+              <strong :class="adminHealth?.dependencies?.app === 'ok' ? 'status-ok' : 'status-bad'">{{ adminHealth?.dependencies?.app || 'unknown' }}</strong>
+              <small>FastAPI service</small>
+            </article>
+            <article class="admin-card">
+              <span>Database</span>
+              <strong :class="adminHealth?.dependencies?.db === 'ok' ? 'status-ok' : 'status-bad'">{{ adminHealth?.dependencies?.db || 'unknown' }}</strong>
+              <small>PostgreSQL dependency</small>
+            </article>
+            <article class="admin-card">
+              <span>Redis</span>
+              <strong :class="adminHealth?.dependencies?.redis === 'ok' ? 'status-ok' : 'status-bad'">{{ adminHealth?.dependencies?.redis || 'unknown' }}</strong>
+              <small>Cache / task dependency</small>
+            </article>
+            <article class="admin-card">
+              <span>Dataset audio</span>
+              <strong>{{ adminStats?.audioCount ?? '—' }}</strong>
+              <small>{{ adminStats?.name || 'spokendialoguesum' }}</small>
+            </article>
+          </div>
+
+          <div class="admin-grid">
+            <section class="admin-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">DATASET SPLITS</p>
+                  <h3>Import coverage</h3>
+                </div>
+              </div>
+              <div v-if="adminStats?.splits && Object.keys(adminStats.splits).length" class="split-summary">
+                <div v-for="[split, count] in Object.entries(adminStats.splits)" :key="split">
+                  <span>{{ split || 'unknown' }}</span>
+                  <strong>{{ count }}</strong>
+                </div>
+              </div>
+              <div v-else class="empty-state compact">No dataset split statistics are available yet.</div>
+            </section>
+
+            <section class="admin-panel users-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">USER ACCESS</p>
+                  <h3>{{ adminUserTotal }} registered users</h3>
+                </div>
+                <div class="admin-pager">
+                  <button class="secondary" :disabled="busy || adminUserPage <= 1" @click="loadAdminDashboard(adminUserPage - 1)">Previous</button>
+                  <button class="secondary" :disabled="busy || adminUserPage * adminPageSize >= adminUserTotal" @click="loadAdminDashboard(adminUserPage + 1)">Next</button>
+                </div>
+              </div>
+
+              <div v-if="adminUsers.length" class="admin-table">
+                <div class="admin-row admin-row-head">
+                  <span>User</span>
+                  <span>Role</span>
+                  <span>Status</span>
+                  <span>Action</span>
+                </div>
+                <div v-for="row in adminUsers" :key="row.id" class="admin-row">
+                  <span class="user-cell">
+                    <strong>{{ row.username }}</strong>
+                    <small>ID {{ row.id }}</small>
+                  </span>
+                  <span><span class="role-pill" :class="{ admin: row.role === 'admin' }">{{ row.role }}</span></span>
+                  <span><span class="state-pill" :class="{ disabled: !row.isActive }">{{ row.isActive ? 'Active' : 'Disabled' }}</span></span>
+                  <span>
+                    <button
+                      v-if="row.id !== user?.id"
+                      :class="row.isActive ? 'danger small-action' : 'secondary small-action'"
+                      :disabled="busy"
+                      @click="setUserStatus(row, !row.isActive)"
+                    >
+                      {{ row.isActive ? 'Disable' : 'Restore' }}
+                    </button>
+                    <small v-else class="self-note">Current admin</small>
+                  </span>
+                </div>
+              </div>
+              <div v-else class="empty-state compact">No users found.</div>
             </section>
           </div>
         </section>

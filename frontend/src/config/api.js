@@ -26,6 +26,8 @@ const ERROR_MESSAGES = {
   'scope 必须为 dataset 或 mine': 'The resource scope is invalid.',
   '用户不存在': 'This user could not be found.',
   '需要管理员权限': 'Administrator access is required.',
+  '管理员不能禁用自己的账号': 'Administrators cannot disable their own account.',
+  '部分依赖不可用': 'Some dependencies are unavailable.',
   'SpeechLLM endpoint is not configured.': 'SpeechLLM endpoint is not configured.',
   'Prompt is required.': 'Please enter a SpeechLLM prompt.',
   'Prompt must be 4000 characters or fewer.': 'The SpeechLLM prompt is too long.',
@@ -57,6 +59,24 @@ export async function api(path, { token, method = 'GET', body, headers = {} } = 
     throw new Error(messageFor(payload?.message, `Request failed (${response.status})`))
   }
   return payload.data
+}
+
+export async function apiWithStatus(path, { token, method = 'GET', body, headers = {} } = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...headers,
+    },
+    body,
+  })
+  const payload = await response.json().catch(() => null)
+  return {
+    ok: response.ok,
+    status: response.status,
+    message: messageFor(payload?.message, `Request failed (${response.status})`),
+    data: payload?.data,
+  }
 }
 
 export async function fetchAudio(path, token) {
