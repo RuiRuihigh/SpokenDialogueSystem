@@ -13,7 +13,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config.database import dispose_database, get_session_factory
 from app.config.redis import close_redis, get_redis
+from app.config.settings import get_settings
 from app.routers import admin, audio_resources, favorites, uploads, users
+from app.services.speech_model import resume_queued_speech_model_tasks, stop_speech_model_tasks
 from app.services.transcription import resume_queued_transcriptions, stop_transcription_tasks
 from app.utils.exceptions import AppError
 from app.utils.responses import error_response, success_response
@@ -28,10 +30,12 @@ async def lifespan(_: FastAPI):
     get_redis()
     try:
         await resume_queued_transcriptions()
+        await resume_queued_speech_model_tasks()
     except SQLAlchemyError:
         # Keep the application bootable before a freshly deployed Alembic revision is applied.
-        logger.warning("Transcription task recovery skipped until database migrations are current", exc_info=True)
+        logger.warning("Background task recovery skipped until database migrations are current", exc_info=True)
     yield
+    await stop_speech_model_tasks()
     await stop_transcription_tasks()
     await close_redis()
     await dispose_database()
@@ -75,7 +79,7 @@ async def handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[origin.strip().rstrip("/") for origin in get_settings().cors_origins.split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

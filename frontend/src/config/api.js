@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 const ERROR_MESSAGES = {
   '未提供访问令牌': 'Please sign in to continue.',
@@ -26,6 +26,17 @@ const ERROR_MESSAGES = {
   'scope 必须为 dataset 或 mine': 'The resource scope is invalid.',
   '用户不存在': 'This user could not be found.',
   '需要管理员权限': 'Administrator access is required.',
+  'SpeechLLM endpoint is not configured.': 'SpeechLLM endpoint is not configured.',
+  'Prompt is required.': 'Please enter a SpeechLLM prompt.',
+  'Prompt must be 4000 characters or fewer.': 'The SpeechLLM prompt is too long.',
+  'SpeechLLM task not found.': 'This SpeechLLM task could not be found.',
+  'You cannot access this SpeechLLM task.': 'You do not have access to this SpeechLLM task.',
+  'SpeechLLM endpoint rejected the token. Check SPEECHLLM_API_TOKEN.': 'SpeechLLM rejected the token. Check the configured Hugging Face token.',
+  'SpeechLLM endpoint path was not found. Check SPEECHLLM_API_BASE_URL and SPEECHLLM_API_PATH.': 'SpeechLLM endpoint path was not found. Check the endpoint URL/path.',
+  'SpeechLLM endpoint is unreachable. Check SPEECHLLM_API_BASE_URL.': 'SpeechLLM endpoint is unreachable. Check the endpoint URL.',
+  'SpeechLLM endpoint timed out. Try a shorter audio file or increase the timeout.': 'SpeechLLM timed out. Try a shorter audio file or increase the timeout.',
+  'SpeechLLM endpoint responded, but the response format was not recognized.': 'SpeechLLM responded, but the response format was not recognized.',
+  'SpeechLLM inference failed. Check the backend logs and endpoint configuration.': 'SpeechLLM inference failed. Check the backend logs and endpoint configuration.',
 }
 
 function messageFor(message, fallback) {

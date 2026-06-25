@@ -2,8 +2,10 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.routers.dependencies import CurrentUser, DatabaseSession
+from app.schemas.speech_model import SpeechModelRequest
 from app.services.audio_delivery import get_content_type, iter_file_range, parse_range_header, resolve_audio_path
 from app.services.resource_access import get_readable_resource, list_readable_resources
+from app.services.speech_model import create_speech_model_task, get_owned_speech_model_task, speech_task_payload
 from app.services.transcription import create_transcription_task, get_owned_transcription_task, task_payload
 from app.services.uploads import delete_owned_upload
 from app.utils.responses import success_response
@@ -69,6 +71,24 @@ async def request_transcription(audio_id: int, session: DatabaseSession, current
 async def get_transcription(task_id: int, session: DatabaseSession, current_user: CurrentUser) -> JSONResponse:
     task = await get_owned_transcription_task(session, task_id=task_id, current_user=current_user)
     return success_response(task_payload(task))
+
+
+@router.post("/{audio_id}/speech-tasks")
+async def request_speech_model_task(
+    audio_id: int,
+    payload: SpeechModelRequest,
+    session: DatabaseSession,
+    current_user: CurrentUser,
+) -> JSONResponse:
+    resource = await get_readable_resource(session, audio_id, current_user)
+    task = await create_speech_model_task(session, resource=resource, current_user=current_user, prompt=payload.prompt)
+    return success_response(speech_task_payload(task), status_code=202)
+
+
+@router.get("/speech-tasks/{task_id}")
+async def get_speech_model_task(task_id: int, session: DatabaseSession, current_user: CurrentUser) -> JSONResponse:
+    task = await get_owned_speech_model_task(session, task_id=task_id, current_user=current_user)
+    return success_response(speech_task_payload(task))
 
 
 @router.delete("/{audio_id}")
